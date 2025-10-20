@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Easyappz API
-  version: 1.5.0
+  version: 1.5.1
   description: |
     Authentication, Ads and Comments endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
@@ -251,6 +251,7 @@ paths:
         - Results of parsing are cached in-memory by normalized URL for 24 hours to avoid repeated requests to Avito.
         - Final Ad data may also be cached in-memory for 24 hours.
         - Graceful degradation: if Avito remains unavailable or the page cannot be parsed after retries, the service still creates an Ad with a placeholder title and empty image and returns 200 OK. In this case, the response includes `degraded: true` and optional `warnings`.
+        - When MongoDB is unavailable, the service seamlessly uses an in-memory store with the same response contract (no additional fields). The ad is still returned with 200.
       requestBody:
         required: true
         content:
@@ -334,28 +335,21 @@ paths:
                   value:
                     success: false
                     error: URL must point to an Avito listing page
-        '422':
-          description: Parsing failed (non-degradable case)
-          content:
-            application/json:
-              examples:
-                parseError:
-                  value:
-                    success: false
-                    error: Failed to parse page: Unable to parse title from the page
         '500':
-          description: Server error
+          description: Server error (unexpected)
           content:
             application/json:
               examples:
-                createError:
+                server:
                   value:
                     success: false
-                    error: Failed to create ad: duplicate key error
+                    error: Resolve error: unexpected
   /ads:
     get:
       summary: List top ads by views
-      description: Returns ads sorted by views (desc) with pagination
+      description: |
+        Returns ads sorted by views (desc) with pagination.
+        When MongoDB is unavailable, results are served from an in-memory store with the same response contract.
       parameters:
         - in: query
           name: limit
@@ -417,17 +411,19 @@ paths:
                       limit: 20
                       offset: 0
         '500':
-          description: Server error
+          description: Server error (unexpected)
           content:
             application/json:
               examples:
                 server:
                   value:
                     success: false
-                    error: List error: database unavailable
+                    error: List error: unexpected
   /ads/{id}:
     get:
       summary: Get ad by id and increment views
+      description: |
+        Increments the ad views counter and returns the updated Ad. Works when MongoDB is unavailable by using an in-memory store with identical contract.
       parameters:
         - in: path
           name: id
@@ -477,14 +473,14 @@ paths:
                     success: false
                     error: Ad not found
         '500':
-          description: Server error
+          description: Server error (unexpected)
           content:
             application/json:
               examples:
                 server:
                   value:
                     success: false
-                    error: GetById error: database unavailable
+                    error: GetById error: unexpected
   /ads/{id}/refresh:
     post:
       summary: Refresh ad data from source (Avito)
@@ -492,6 +488,7 @@ paths:
         Forces a refresh of an existing Ad by fetching its original URL and attempting robust parsing.
         - On success (`ok: true`), updates title and image (image only if found) without worsening existing data.
         - On degraded parsing (temporary blocks, anti-bot, dynamic rendering), returns 200 with `degraded: true` and does not change stored data.
+        - Works when MongoDB is unavailable by operating on an in-memory store with the same response contract.
       parameters:
         - in: path
           name: id
@@ -570,14 +567,14 @@ paths:
                     success: false
                     error: Ad not found
         '500':
-          description: Server error
+          description: Server error (unexpected)
           content:
             application/json:
               examples:
                 server:
                   value:
                     success: false
-                    error: Refresh error: database unavailable
+                    error: Refresh error: unexpected
   /ads/{id}/comments:
     get:
       summary: List comments for an ad

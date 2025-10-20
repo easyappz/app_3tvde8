@@ -9,6 +9,9 @@ const apiRoutes = require('@src/routes/main');
 
 const app = express();
 
+// Ensure Mongoose does not buffer commands when DB is down
+mongoose.set('bufferCommands', false);
+
 // Middlewares
 app.use(cors());
 app.use(express.json());

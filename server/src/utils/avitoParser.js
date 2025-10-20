@@ -61,7 +61,6 @@ function normalizeUrl(urlString) {
   if (!host.includes("avito")) {
     throw new Error("URL must point to an Avito listing page");
   }
-  // Build canonical without search/hash
   const pathname = parsed.pathname || "/";
   return `${parsed.protocol}//${host}${pathname}`;
 }
@@ -103,6 +102,12 @@ async function fetchHtmlWithRetries(url, { retries = 4, baseDelayMs = 500, timeo
         "Upgrade-Insecure-Requests": "1",
         DNT: "1",
         Connection: "keep-alive",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
       };
 
       const response = await axios.get(url, {
@@ -189,10 +194,8 @@ function pickFirstStringByKeys(obj, keys) {
 }
 
 function pickImageFromUnknown(val, baseUrl) {
-  // val can be string | object | array
   function pickFromObject(o) {
     if (!o || typeof o !== "object") return null;
-    // common keys
     const directKeys = ["url", "contentUrl", "image", "src"];
     for (const k of directKeys) {
       if (typeof o[k] === "string") {
@@ -200,7 +203,6 @@ function pickImageFromUnknown(val, baseUrl) {
         if (resolved) return resolved;
       }
     }
-    // nested search
     for (const [k, v] of Object.entries(o)) {
       if (typeof v === "string" && /image|photo|picture|img/i.test(k)) {
         const resolved = resolveImageUrl(baseUrl, v);
@@ -274,7 +276,6 @@ function pickTitleFromObject(obj) {
 
 function pickImageFromObject(obj, baseUrl) {
   if (!obj || typeof obj !== "object") return null;
-  // prefer explicit keys
   const order = ["image", "imageUrl", "imageURL", "img", "photo", "picture"]; 
   for (const k of order) {
     if (k in obj) {
@@ -282,7 +283,6 @@ function pickImageFromObject(obj, baseUrl) {
       if (cand) return cand;
     }
   }
-  // generic url nested under image-like keys
   let result = null;
   (function walk(node, parentKey) {
     if (result) return;
@@ -363,7 +363,7 @@ async function parseAvito(inputUrl) {
     let jsonLdTitle = null;
     let jsonLdImage = null;
     $("script[type='application/ld+json']").each((_, el) => {
-      if (jsonLdTitle && jsonLdImage) return; // short-circuit if both found
+      if (jsonLdTitle && jsonLdImage) return;
       const raw = $(el).contents().text();
       if (!raw || typeof raw !== "string") return;
       const { title, image } = extractFromJsonLd(raw, url);
@@ -395,18 +395,15 @@ async function parseAvito(inputUrl) {
       if (resolved) firstImg = resolved;
     });
 
-    // Choose best title and image
     const title = (jsonLdTitle || initTitle || titleFromMeta || titleFromTitle || "").trim();
     const image = jsonLdImage || initImage || imageFromMeta || linkImage || firstImg || null;
 
     if (title) {
       const result = { title, image: image || null, url };
-      // Save to cache
       parseCache.set(url, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
       return { ok: true, ...result };
     }
 
-    // Degraded path: no title
     const warnings = [];
     if (!titleFromMeta && !titleFromTitle) warnings.push("Failed to extract <title>/og:title");
     if (!jsonLdTitle) warnings.push("JSON-LD title not found or unparsable");
