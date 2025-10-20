@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Easyappz API
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    Authentication and Ads endpoints for Easyappz service.
+    Authentication, Ads and Comments endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
 servers:
   - url: /api
@@ -392,6 +392,188 @@ paths:
                   value:
                     success: false
                     error: GetById error: database unavailable
+  /ads/{id}/comments:
+    get:
+      summary: List comments for an ad
+      description: Returns comments for a given ad id with pagination and sort by createdAt
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the Ad
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Max items to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of items to skip
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+          description: Sort order by createdAt
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                      sort:
+                        type: string
+                        enum: [ASC, DESC]
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      - _id: 66f2d1b2c8a4f21f1c222201
+                        ad: 65f2d1b2c8a4f21f1c111113
+                        user:
+                          _id: 65f2d1b2c8a4f21f1c101010
+                          email: user1@example.com
+                        text: Great price!
+                        createdAt: 2025-01-02T12:01:00.000Z
+                      - _id: 66f2d1b2c8a4f21f1c222202
+                        ad: 65f2d1b2c8a4f21f1c111113
+                        user:
+                          _id: 65f2d1b2c8a4f21f1c101011
+                          email: user2@example.com
+                        text: Is it still available?
+                        createdAt: 2025-01-02T12:05:00.000Z
+                    pagination:
+                      total: 2
+                      limit: 20
+                      offset: 0
+                      sort: DESC
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              examples:
+                invalid:
+                  value:
+                    success: false
+                    error: Invalid ad id
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: Failed to list comments
+    post:
+      summary: Add comment to ad (authorized)
+      description: Creates a comment for a given ad id. Only authorized users can post.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  example: Is the item available for pickup?
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  comment:
+                    $ref: '#/components/schemas/Comment'
+              examples:
+                success:
+                  value:
+                    success: true
+                    comment:
+                      _id: 66f2d1b2c8a4f21f1c222203
+                      ad: 65f2d1b2c8a4f21f1c111113
+                      user:
+                        _id: 65f2d1b2c8a4f21f1c101012
+                        email: user3@example.com
+                      text: Is the item available for pickup?
+                      createdAt: 2025-01-03T10:00:00.000Z
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              examples:
+                missingText:
+                  value:
+                    success: false
+                    error: Text is required
+                invalidAd:
+                  value:
+                    success: false
+                    error: Invalid ad id
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    error: Unauthorized
+        '404':
+          description: Ad not found
+          content:
+            application/json:
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    error: Ad not found
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: Failed to add comment
 components:
   securitySchemes:
     bearerAuth:
@@ -418,6 +600,31 @@ components:
         views:
           type: integer
           example: 10
+        createdAt:
+          type: string
+          format: date-time
+    Comment:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: 66f2d1b2c8a4f21f1c222201
+        ad:
+          type: string
+          example: 65f2d1b2c8a4f21f1c111113
+        user:
+          type: object
+          properties:
+            _id:
+              type: string
+              example: 65f2d1b2c8a4f21f1c101010
+            email:
+              type: string
+              format: email
+              example: user@example.com
+        text:
+          type: string
+          example: Great price!
         createdAt:
           type: string
           format: date-time

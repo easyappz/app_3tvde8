@@ -1,6 +1,8 @@
 const express = require('express');
 const authController = require('@src/controllers/authController');
 const adController = require('@src/controllers/adController');
+const commentController = require('@src/controllers/commentController');
+const { verifyAuth } = require('@src/middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -25,6 +27,10 @@ router.post('/auth/login', async (req, res) => {
 router.post('/ads/resolve', (req, res) => adController.resolveOrCreate(req, res));
 router.get('/ads', (req, res) => adController.listTop(req, res));
 router.get('/ads/:id', (req, res) => adController.getById(req, res));
+
+// Comments routes
+router.get('/ads/:id/comments', (req, res) => commentController.listComments(req, res));
+router.post('/ads/:id/comments', verifyAuth, (req, res) => commentController.addComment(req, res));
 
 // GET /api/hello
 router.get('/hello', async (req, res) => {
