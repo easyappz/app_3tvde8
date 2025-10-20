@@ -1,11 +1,11 @@
 import instance from './axios';
 
-export const register = async ({ email, password }) => {
+export async function apiRegister({ email, password }) {
   const res = await instance.post('/api/auth/register', { email, password });
   return res.data;
-};
+}
 
-export const login = async ({ email, password }) => {
+export async function apiLogin({ email, password }) {
   const res = await instance.post('/api/auth/login', { email, password });
   return res.data;
-};
+}

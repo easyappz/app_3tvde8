@@ -1,24 +1,20 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 
-const AdCard = ({ ad }) => {
-  const navigate = useNavigate();
-  if (!ad) return null;
-
+export default function AdCard({ ad, onClick }) {
+  const title = ad?.title || 'Без названия';
+  const views = typeof ad?.views === 'number' ? ad.views : 0;
+  const img = ad?.image || '';
   return (
-    <div className="card" onClick={() => navigate(`/ad/${ad._id}`)}>
-      <img
-        className="card-cover"
-        src={ad.image || '/logo192.png'}
-        alt={ad.title || 'ad'}
-        onError={(e) => { e.currentTarget.src = '/logo192.png'; }}
-      />
+    <div className="card" onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onClick && onClick(); }}>
+      {img ? (
+        <img className="card-cover" src={img} alt={title} />
+      ) : (
+        <div className="card-cover" />
+      )}
       <div className="card-body">
-        <div className="card-title">{ad.title || 'Объявление'}</div>
-        <div className="card-meta">Просмотры: {typeof ad.views === 'number' ? ad.views : 0}</div>
+        <div className="card-title">{title}</div>
+        <div className="card-meta">Просмотры: {views}</div>
       </div>
     </div>
   );
-};
-
-export default AdCard;
+}

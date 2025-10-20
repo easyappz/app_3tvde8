@@ -116,10 +116,11 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
 
@@ -187,3 +188,12 @@ body {
 .error { color: var(--danger); font-size: 13px; margin-top: 8px; }
 .empty { color: var(--muted); font-size: 14px; }
 .loading { color: var(--muted); }
+
+/* Spinner */
+.spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

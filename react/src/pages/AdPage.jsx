@@ -1,98 +1,133 @@
-import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getById } from '../api/ads';
-import { listByAd } from '../api/comments';
-import CommentForm from '../components/CommentForm';
+import { getAd } from '../api/ads';
+import { addComment, listComments } from '../api/comments';
+import { useAuth } from '../context/AuthContext';
 
-const AdPage = () => {
+function formatDate(dt) {
+  try {
+    return new Date(dt).toLocaleString('ru-RU');
+  } catch (e) {
+    return '';
+  }
+}
+
+export default function AdPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
+  const qc = useQueryClient();
 
-  const {
-    data: adData,
-    isPending: adLoading,
-    isError: adError,
-  } = useQuery({
+  const { data: adData, isLoading: adLoading, isError: adError } = useQuery({
     queryKey: ['ad', id],
-    queryFn: () => getById(id),
+    queryFn: () => getAd(id),
+    enabled: Boolean(id),
   });
 
-  const {
-    data: commentsData,
-    isPending: commentsLoading,
-    isError: commentsError,
-    refetch: refetchComments,
-  } = useQuery({
-    queryKey: ['comments', id, { limit: 20, offset: 0, sort: 'DESC' }],
-    queryFn: () => listByAd(id, { limit: 20, offset: 0, sort: 'DESC' }),
+  const { data: commentsData, isLoading: commentsLoading, isError: commentsError, refetch: refetchComments } = useQuery({
+    queryKey: ['comments', id, 'DESC'],
+    queryFn: () => listComments(id, { sort: 'DESC', limit: 50, offset: 0 }),
     enabled: Boolean(id),
   });
 
   const ad = adData?.ad;
   const comments = commentsData?.data || [];
 
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
+
+  const onSend = async (e) => {
+    e.preventDefault();
+    setSendError('');
+    const value = String(text || '').trim();
+    if (!value) { setSendError('Введите текст комментария'); return; }
+
+    setSending(true);
+    try {
+      const res = await addComment(id, value);
+      if (res?.success) {
+        setText('');
+        await refetchComments();
+        await qc.invalidateQueries({ queryKey: ['ad', id] });
+      } else {
+        setSendError('Не удалось отправить комментарий');
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Ошибка отправки комментария';
+      setSendError(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div>
-      <div style={{ marginBottom: 10 }}>
-        <Link to="/" className="back-link">← На главную</Link>
+      <div style={{ marginBottom: 12 }}>
+        <Link className="back-link" to="/">⟵ На главную</Link>
       </div>
 
-      {adLoading && <div className="loading">Загрузка объявления…</div>}
-      {adError && <div className="error">Не удалось загрузить объявление</div>}
+      {adLoading && (
+        <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="spinner" /> Загружаем объявление...
+        </div>
+      )}
+      {adError && (
+        <div className="error">Не удалось загрузить объявление</div>
+      )}
 
-      {!adLoading && !adError && ad && (
-        <div className="ad-hero">
-          <img
-            className="ad-cover"
-            src={ad.image || '/logo512.png'}
-            alt={ad.title || 'ad'}
-            onError={(e) => { e.currentTarget.src = '/logo512.png'; }}
-          />
+      {ad && (
+        <div className="ad-hero" style={{ marginBottom: 16 }}>
+          {ad.image ? (
+            <img className="ad-cover" src={ad.image} alt={ad.title} />
+          ) : (
+            <div className="ad-cover" style={{ height: 240 }} />
+          )}
           <div className="ad-info">
-            <h1 className="ad-title">{ad.title || 'Объявление'}</h1>
+            <h2 className="ad-title">{ad.title}</h2>
             <div className="ad-views">Просмотры: {typeof ad.views === 'number' ? ad.views : 0}</div>
-            <div className="help" style={{ marginTop: 10 }}>Оригинал: <a href={ad.url} target="_blank" rel="noreferrer">открыть на Avito</a></div>
+            <div className="help" style={{ marginTop: 8 }}>Создано: {ad.createdAt ? formatDate(ad.createdAt) : '—'}</div>
+            <a className="btn ghost" style={{ marginTop: 12, display: 'inline-block' }} href={ad.url} target="_blank" rel="noreferrer">Открыть на Авито</a>
           </div>
         </div>
       )}
 
-      <div style={{ height: 20 }} />
-
-      <div className="comments">
-        <h3 style={{ margin: 0 }}>Комментарии</h3>
-        <div style={{ height: 10 }} />
-        {commentsLoading && <div className="loading">Загрузка комментариев…</div>}
-        {commentsError && <div className="error">Не удалось загрузить комментарии</div>}
-        {!commentsLoading && !commentsError && (
-          comments.length ? (
-            <div>
-              {comments.map((c) => (
-                <div key={c._id} className="comment">
-                  <div className="comment-head">
-                    <span>{c.user?.email || 'Аноним'}</span>
-                    <span>{c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}</span>
-                  </div>
-                  <div className="comment-text">{c.text}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty">Пока нет комментариев — станьте первым!</div>
-          )
+      <section className="comments">
+        <h3 style={{ margin: 0, marginBottom: 8 }}>Комментарии</h3>
+        {commentsLoading && (
+          <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="spinner" /> Загружаем комментарии...
+          </div>
         )}
+        {commentsError && (
+          <div className="error">Не удалось загрузить комментарии</div>
+        )}
+        {!commentsLoading && !commentsError && comments.length === 0 && (
+          <div className="empty">Пока нет комментариев. Будьте первым!</div>
+        )}
+        {comments.map((c) => (
+          <div key={c._id} className="comment">
+            <div className="comment-head">
+              <span>{c?.user?.email || 'Аноним'}</span>
+              <span>{c?.createdAt ? formatDate(c.createdAt) : ''}</span>
+            </div>
+            <div className="comment-text">{c.text}</div>
+          </div>
+        ))}
 
-        <div style={{ height: 14 }} />
-        <CommentForm
-          adId={id}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['comments', id] });
-            refetchComments();
-          }}
-        />
-      </div>
+        {isAuthenticated ? (
+          <form onSubmit={onSend} style={{ marginTop: 12 }}>
+            <label className="label" htmlFor="comment">Добавить комментарий</label>
+            <textarea id="comment" className="input" rows={3} placeholder="Ваш комментарий..." value={text} onChange={(e) => setText(e.target.value)} />
+            {sendError ? <div className="error">{sendError}</div> : <div className="help">Будьте вежливы. Комментарий увидят другие пользователи.</div>}
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn primary" type="submit" disabled={sending}>{sending ? 'Отправка...' : 'Отправить'}</button>
+            </div>
+          </form>
+        ) : (
+          <div className="help" style={{ marginTop: 8 }}>Чтобы оставить комментарий, войдите в аккаунт.</div>
+        )}
+      </section>
     </div>
   );
-};
-
-export default AdPage;
+}

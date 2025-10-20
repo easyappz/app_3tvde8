@@ -1,81 +1,87 @@
 import React, { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { resolveByUrl, listTop } from '../api/ads';
+import { useQuery } from '@tanstack/react-query';
+import { listAds, resolveAd } from '../api/ads';
 import AdCard from '../components/AdCard';
 
-const Home = () => {
+export default function Home() {
   const navigate = useNavigate();
   const [url, setUrl] = useState('');
-  const [error, setError] = useState('');
+  const [urlError, setUrlError] = useState('');
+  const [resolving, setResolving] = useState(false);
 
-  const { data: topData, isPending: topLoading, isError: topError } = useQuery({
-    queryKey: ['ads', 'top', { limit: 12 }],
-    queryFn: () => listTop({ limit: 12, offset: 0 }),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['ads', { limit: 20, offset: 0 }],
+    queryFn: () => listAds({ limit: 20, offset: 0 }),
   });
 
-  const resolveMutation = useMutation({
-    mutationFn: resolveByUrl,
-    onSuccess: (data) => {
-      if (data && data.success && data.ad && data.ad._id) {
-        navigate(`/ad/${data.ad._id}`);
-      } else {
-        setError('Не удалось обработать ссылку');
-      }
-    },
-    onError: (err) => {
-      const msg = err?.response?.data?.error || 'Ошибка обработки ссылки';
-      setError(msg);
-    },
-  });
-
-  const onSubmit = (e) => {
-    e.preventDefault();
-    setError('');
+  const onOpen = async () => {
+    setUrlError('');
     const value = String(url || '').trim();
     if (!value) {
-      setError('Введите ссылку на объявление Авито');
+      setUrlError('Вставьте ссылку на объявление');
       return;
     }
-    resolveMutation.mutate({ url: value });
+    const lower = value.toLowerCase();
+    const startsWithHttp = lower.startsWith('http://') || lower.startsWith('https://');
+    if (!startsWithHttp) {
+      setUrlError('Ссылка должна начинаться с http:// или https://');
+      return;
+    }
+    setResolving(true);
+    try {
+      const result = await resolveAd(value);
+      const ad = result?.ad;
+      if (result?.success && ad?._id) {
+        navigate(`/ad/${ad._id}`);
+      } else {
+        setUrlError('Не удалось открыть объявление');
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Ошибка при открытии объявления';
+      setUrlError(msg);
+    } finally {
+      setResolving(false);
+    }
   };
+
+  const ads = data?.data || [];
 
   return (
     <div>
-      <div className="hero">
-        <h1>Быстрые комментарии к объявлениям Авито</h1>
-        <p>Вставьте ссылку на объявление — мы найдём его и откроем страницу с обсуждением.</p>
-        <form className="inline-form" onSubmit={onSubmit}>
+      <section className="hero">
+        <h1>Откройте объявление Авито по ссылке</h1>
+        <p>Вставьте ссылку на объявление, мы создадим карточку и покажем статистику просмотров и комментарии.</p>
+        <div className="inline-form">
           <input
             className="input"
-            type="url"
-            placeholder="Вставьте ссылку на объявление Авито"
+            placeholder="https://www.avito.ru/..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
           />
-          <button className="btn primary" type="submit" disabled={resolveMutation.isPending}>
-            {resolveMutation.isPending ? 'Открываем…' : 'Открыть'}
-          </button>
-        </form>
-        {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
-      </div>
+          <button className="btn primary" onClick={onOpen} disabled={resolving}>{resolving ? 'Открываем...' : 'Открыть объявление'}</button>
+        </div>
+        {urlError ? <div className="error">{urlError}</div> : <div className="help">Проверьте, что ссылка ведет на конкретное объявление.</div>}
+      </section>
 
-      <h2 className="section-title">Самые просматриваемые</h2>
-      {topLoading && <div className="loading">Загрузка объявлений…</div>}
-      {topError && <div className="error">Не удалось загрузить список объявлений</div>}
-      {!topLoading && !topError && (
-        topData?.data?.length ? (
-          <div className="grid">
-            {topData.data.map((ad) => (
-              <AdCard key={ad._id} ad={ad} />
-            ))}
-          </div>
-        ) : (
-          <div className="empty">Пока нет объявлений</div>
-        )
+      <h2 className="section-title">Популярные объявления</h2>
+      {isLoading && (
+        <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="spinner" /> Загрузка объявлений...
+        </div>
       )}
+      {isError && (
+        <div className="error">Не удалось загрузить список. {String(error?.message || '')} <button className="btn ghost" onClick={() => refetch()}>Повторить</button></div>
+      )}
+      {!isLoading && !isError && ads.length === 0 && (
+        <div className="empty">Пока нет объявлений</div>
+      )}
+      <div className="grid">
+        {ads.map((ad) => (
+          <AdCard key={ad._id} ad={ad} onClick={() => navigate(`/ad/${ad._id}`)} />
+        ))}
+      </div>
     </div>
   );
-};
-
-export default Home;
+}

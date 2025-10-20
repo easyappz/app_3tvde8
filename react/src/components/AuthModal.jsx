@@ -1,115 +1,83 @@
-import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { login, register } from '../api/auth';
+import React, { useEffect, useState } from 'react';
+import { apiLogin, apiRegister } from '../api/auth';
+import { useAuth } from '../context/AuthContext';
 
-const AuthModal = ({ open, onClose, mode = 'login', onAuthSuccess }) => {
-  const [authMode, setAuthMode] = useState(mode);
+export default function AuthModal({ isOpen, defaultTab = 'login', onClose }) {
+  const { login } = useAuth();
+  const [tab, setTab] = useState(defaultTab);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loginMutation = useMutation({
-    mutationFn: login,
-    onSuccess: (data) => {
-      if (data && data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        if (onAuthSuccess) onAuthSuccess(data.user);
-        onClose();
-      } else {
-        setError('Не удалось войти');
-      }
-    },
-    onError: (err) => {
-      const msg = err?.response?.data?.error || 'Ошибка входа';
-      setError(msg);
-    },
-  });
+  useEffect(() => { setTab(defaultTab); setError(''); setEmail(''); setPassword(''); }, [defaultTab, isOpen]);
 
-  const registerMutation = useMutation({
-    mutationFn: register,
-    onSuccess: (data) => {
-      if (data && data.success) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        if (onAuthSuccess) onAuthSuccess(data.user);
-        onClose();
-      } else {
-        setError('Не удалось зарегистрироваться');
-      }
-    },
-    onError: (err) => {
-      const msg = err?.response?.data?.error || 'Ошибка регистрации';
-      setError(msg);
-    },
-  });
+  if (!isOpen) return null;
 
-  const onSubmit = (e) => {
+  const close = () => {
+    if (!loading) onClose && onClose();
+  };
+
+  const submit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email || !password) {
-      setError('Заполните email и пароль');
+
+    const trimmedEmail = String(email || '').trim();
+    const trimmedPassword = String(password || '').trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      setError('Введите email и пароль');
       return;
     }
-    if (authMode === 'login') {
-      loginMutation.mutate({ email, password });
-    } else {
-      registerMutation.mutate({ email, password });
+
+    setLoading(true);
+    try {
+      if (tab === 'register') {
+        const data = await apiRegister({ email: trimmedEmail, password: trimmedPassword });
+        if (data && data.success && data.token && data.user) {
+          login(data.user, data.token);
+          close();
+        } else {
+          setError('Не удалось зарегистрироваться');
+        }
+      } else {
+        const data = await apiLogin({ email: trimmedEmail, password: trimmedPassword });
+        if (data && data.success && data.token && data.user) {
+          login(data.user, data.token);
+          close();
+        } else {
+          setError('Неверные учетные данные');
+        }
+      }
+    } catch (err) {
+      const apiMsg = err?.response?.data?.error;
+      setError(apiMsg || 'Произошла ошибка. Попробуйте еще раз.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!open) return null;
-
-  const loading = loginMutation.isPending || registerMutation.isPending;
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={close}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{authMode === 'login' ? 'Вход' : 'Регистрация'}</h3>
-        <form onSubmit={onSubmit}>
+        <h3>{tab === 'register' ? 'Регистрация' : 'Вход'}</h3>
+        <div className="form-row" style={{ marginBottom: 10 }}>
+          <button className={`btn ${tab === 'login' ? 'primary' : 'ghost'}`} onClick={() => setTab('login')}>Вход</button>
+          <button className={`btn ${tab === 'register' ? 'primary' : 'ghost'}`} onClick={() => setTab('register')}>Регистрация</button>
+        </div>
+        <form onSubmit={submit}>
           <label className="label" htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            className="input"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
+          <input id="email" className="input" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           <div style={{ height: 10 }} />
-
           <label className="label" htmlFor="password">Пароль</label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            placeholder="Минимум 6 символов"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          {error ? <div className="error">{error}</div> : <div className="help">Токен сохранится в localStorage</div>}
-
+          <input id="password" className="input" type="password" placeholder="Минимум 6 символов" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {error ? <div className="error">{error}</div> : <div className="help">Используйте действующий email. Пароль не короче 6 символов.</div>}
           <div className="modal-footer">
-            <button type="button" className="btn ghost" onClick={onClose}>Отмена</button>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              >
-                {authMode === 'login' ? 'Перейти к регистрации' : 'У меня есть аккаунт'}
-              </button>
-              <button type="submit" className="btn primary" disabled={loading}>
-                {loading ? 'Загрузка…' : (authMode === 'login' ? 'Войти' : 'Зарегистрироваться')}
-              </button>
-            </div>
+            <button type="button" className="btn ghost" onClick={close} disabled={loading}>Отмена</button>
+            <button type="submit" className="btn primary" disabled={loading}>{loading ? 'Отправка...' : (tab === 'register' ? 'Зарегистрироваться' : 'Войти')}</button>
           </div>
         </form>
       </div>
     </div>
   );
-};
-
-export default AuthModal;
+}
