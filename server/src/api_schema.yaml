@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Easyappz Auth API
-  version: 1.0.0
+  title: Easyappz API
+  version: 1.1.0
   description: |
-    Basic authentication endpoints for Easyappz service.
+    Authentication and Ads endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
 servers:
   - url: /api
@@ -176,11 +176,250 @@ paths:
                   value:
                     success: false
                     error: Login failed
+  /ads/resolve:
+    post:
+      summary: Resolve Avito URL and create or return existing Ad
+      description: |
+        Accepts an Avito listing URL. If an Ad with the same URL already exists, returns it.
+        Otherwise fetches the page, parses title and cover image, creates Ad with views=0 and returns it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  example: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+      responses:
+        '200':
+          description: Resolved successfully (existing or newly created)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  created:
+                    type: boolean
+                    description: Indicates whether a new Ad was created
+                  ad:
+                    $ref: '#/components/schemas/Ad'
+              examples:
+                created:
+                  value:
+                    success: true
+                    created: true
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111112
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                      title: iPhone 14 128GB
+                      image: https://example.cdn/iphone14.jpg
+                      views: 0
+                      createdAt: 2025-01-01T12:00:00.000Z
+                existing:
+                  value:
+                    success: true
+                    created: false
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111113
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                      title: iPhone 14 128GB
+                      image: https://example.cdn/iphone14.jpg
+                      views: 42
+                      createdAt: 2025-01-01T12:00:00.000Z
+        '400':
+          description: Invalid input (e.g., invalid URL)
+          content:
+            application/json:
+              examples:
+                invalidUrl:
+                  value:
+                    success: false
+                    error: URL must point to an Avito listing page
+        '422':
+          description: Parsing failed
+          content:
+            application/json:
+              examples:
+                parseError:
+                  value:
+                    success: false
+                    error: Failed to parse page: Unable to parse title from the page
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                createError:
+                  value:
+                    success: false
+                    error: Failed to create ad: duplicate key error
+  /ads:
+    get:
+      summary: List top ads by views
+      description: Returns ads sorted by views (desc) with pagination
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Max items to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of items to skip
+      responses:
+        '200':
+          description: List of ads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ad'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+              examples:
+                success:
+                  value:
+                    success: true
+                    data:
+                      - _id: 65f2d1b2c8a4f21f1c111113
+                        url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                        title: iPhone 14 128GB
+                        image: https://example.cdn/iphone14.jpg
+                        views: 42
+                        createdAt: 2025-01-01T12:00:00.000Z
+                      - _id: 65f2d1b2c8a4f21f1c111114
+                        url: https://www.avito.ru/moskva/telefony/samsung_galaxy_123
+                        title: Samsung Galaxy
+                        image: https://example.cdn/galaxy.jpg
+                        views: 30
+                        createdAt: 2025-01-02T12:00:00.000Z
+                    pagination:
+                      total: 2
+                      limit: 20
+                      offset: 0
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: List error: database unavailable
+  /ads/{id}:
+    get:
+      summary: Get ad by id and increment views
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the Ad
+      responses:
+        '200':
+          description: Ad found and views incremented
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  ad:
+                    $ref: '#/components/schemas/Ad'
+              examples:
+                success:
+                  value:
+                    success: true
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111113
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                      title: iPhone 14 128GB
+                      image: https://example.cdn/iphone14.jpg
+                      views: 43
+                      createdAt: 2025-01-01T12:00:00.000Z
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              examples:
+                invalid:
+                  value:
+                    success: false
+                    error: Invalid ad id
+        '404':
+          description: Not found
+          content:
+            application/json:
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    error: Ad not found
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: GetById error: database unavailable
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  schemas:
+    Ad:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: 65f2d1b2c8a4f21f1c111111
+        url:
+          type: string
+          example: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+        title:
+          type: string
+          example: iPhone 14 128GB
+        image:
+          type: string
+          nullable: true
+          example: https://example.cdn/iphone14.jpg
+        views:
+          type: integer
+          example: 10
+        createdAt:
+          type: string
+          format: date-time
 security:
   - bearerAuth: []

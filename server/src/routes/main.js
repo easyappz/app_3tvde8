@@ -1,5 +1,6 @@
 const express = require('express');
 const authController = require('@src/controllers/authController');
+const adController = require('@src/controllers/adController');
 
 const router = express.Router();
 
@@ -19,6 +20,11 @@ router.post('/auth/login', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// Ads routes (public)
+router.post('/ads/resolve', (req, res) => adController.resolveOrCreate(req, res));
+router.get('/ads', (req, res) => adController.listTop(req, res));
+router.get('/ads/:id', (req, res) => adController.getById(req, res));
 
 // GET /api/hello
 router.get('/hello', async (req, res) => {
