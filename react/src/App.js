@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ErrorBoundary from './ErrorBoundary';
 import './App.css';
@@ -11,6 +11,16 @@ import EmailVerify from './pages/EmailVerify';
 const EASY_TAG = '1760914455134-react/src/App.js';
 
 function App() {
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && typeof window.handleRoutes === 'function') {
+        window.handleRoutes(['/', '/ad/:id', '/verify-email']);
+      }
+    } catch (e) {
+      // noop
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <div className="app-root" data-easytag={EASY_TAG}>

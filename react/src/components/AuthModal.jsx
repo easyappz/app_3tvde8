@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { apiLogin, apiRegister } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 
@@ -49,7 +50,6 @@ export default function AuthModal({ isOpen, defaultTab = 'login', onClose }) {
       if (tab === 'register') {
         const data = await apiRegister({ email: trimmedEmail, password: trimmedPassword });
         if (data && data.success) {
-          // Do NOT auto-login after registration. Show info about email confirmation.
           setRegisteredInfo(true);
           setPassword('');
         } else {
@@ -72,7 +72,7 @@ export default function AuthModal({ isOpen, defaultTab = 'login', onClose }) {
     }
   };
 
-  return (
+  const modalContent = (
     <div className="modal-overlay" onClick={close} data-easytag={EASY_TAG}>
       <div className="modal" onClick={(e) => e.stopPropagation()} data-easytag={EASY_TAG}>
         <h3 data-easytag={EASY_TAG}>{registeredInfo ? 'Подтверждение почты' : (tab === 'register' ? 'Регистрация' : 'Вход')}</h3>
@@ -151,4 +151,6 @@ export default function AuthModal({ isOpen, defaultTab = 'login', onClose }) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
