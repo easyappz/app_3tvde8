@@ -11,6 +11,8 @@ export default function Home() {
   const [url, setUrl] = useState('');
   const [urlError, setUrlError] = useState('');
   const [resolving, setResolving] = useState(false);
+  const [resolveHint, setResolveHint] = useState('');
+  const [resolveWarnings, setResolveWarnings] = useState([]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ads', { limit: 20, offset: 0 }],
@@ -19,6 +21,9 @@ export default function Home() {
 
   const onOpen = async () => {
     setUrlError('');
+    setResolveHint('');
+    setResolveWarnings([]);
+
     const value = String(url || '').trim();
     if (!value) {
       setUrlError('Вставьте ссылку на объявление');
@@ -33,11 +38,15 @@ export default function Home() {
     setResolving(true);
     try {
       const result = await resolveAd(value);
+      if (result?.degraded) {
+        setResolveHint('Данные могли быть получены в урезанном режиме. Некоторые детали объявления могут отсутствовать.');
+        setResolveWarnings(Array.isArray(result?.warnings) ? result.warnings : []);
+      }
       const ad = result?.ad;
       if (result?.success && ad?._id) {
         navigate(`/ad/${ad._id}`);
       } else {
-        setUrlError('Не удалось открыть объявление');
+        setUrlError(result?.error || 'Не удалось открыть объявление');
       }
     } catch (e) {
       const status = e?.response?.status;
@@ -52,7 +61,7 @@ export default function Home() {
       } else if (status === 400) {
         msg = serverMsg || 'Некорректная ссылка на объявление';
       } else if (status === 500) {
-        msg = 'Внутренняя ошибка сервера. Попробуйте позже.';
+        msg = serverMsg || 'Внутренняя ошибка сервера. Попробуйте позже.';
       } else {
         msg = serverMsg || 'Ошибка при открытии объявления';
       }
@@ -86,6 +95,18 @@ export default function Home() {
         ) : (
           <div className="help" data-easytag={EASY_TAG}>Проверьте, что ссылка ведет на конкретное объявление.</div>
         )}
+        {!!resolveHint && (
+          <div className="muted" style={{ marginTop: 8, background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: '8px 10px' }} data-easytag={EASY_TAG}>
+            ⚠️ {resolveHint}
+            {resolveWarnings.length > 0 && (
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }} data-easytag={EASY_TAG}>
+                {resolveWarnings.map((w, i) => (
+                  <li key={i} data-easytag={EASY_TAG}>{String(w)}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
 
       <h2 className="section-title" data-easytag={EASY_TAG}>Популярные объявления</h2>
@@ -95,7 +116,10 @@ export default function Home() {
         </div>
       )}
       {isError && (
-        <div className="error" data-easytag={EASY_TAG}>Не удалось загрузить список. {String(error?.message || '')} <button className="btn ghost" onClick={() => refetch()} data-easytag={EASY_TAG}>Повторить</button></div>
+        <div className="error" data-easytag={EASY_TAG}>
+          Не удалось загрузить список. {String(error?.response?.data?.error || error?.message || '')}
+          <button className="btn ghost" onClick={() => refetch()} style={{ marginLeft: 8 }} data-easytag={EASY_TAG}>Повторить</button>
+        </div>
       )}
       {!isLoading && !isError && ads.length === 0 && (
         <div className="empty" data-easytag={EASY_TAG}>Пока нет объявлений</div>

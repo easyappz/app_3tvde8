@@ -20,13 +20,13 @@ export default function AdPage() {
   const { isAuthenticated } = useAuth();
   const qc = useQueryClient();
 
-  const { data: adData, isLoading: adLoading, isError: adError } = useQuery({
+  const { data: adData, isLoading: adLoading, isError: adError, error: adErr } = useQuery({
     queryKey: ['ad', id],
     queryFn: () => getAd(id),
     enabled: Boolean(id),
   });
 
-  const { data: commentsData, isLoading: commentsLoading, isError: commentsError, refetch: refetchComments } = useQuery({
+  const { data: commentsData, isLoading: commentsLoading, isError: commentsError, error: commentsErr, refetch: refetchComments } = useQuery({
     queryKey: ['comments', id, 'DESC'],
     queryFn: () => listComments(id, { sort: 'DESC', limit: 50, offset: 0 }),
     enabled: Boolean(id),
@@ -69,6 +69,12 @@ export default function AdPage() {
     }
   };
 
+  const showDegradedHelp = Boolean(
+    ad && (
+      !ad.image || !String(ad.title || '').trim() || String(ad.title || '').trim() === 'Объявление Avito'
+    )
+  );
+
   return (
     <div data-easytag={EASY_TAG}>
       <div style={{ marginBottom: 12 }} data-easytag={EASY_TAG}>
@@ -76,27 +82,48 @@ export default function AdPage() {
       </div>
 
       {adLoading && (
-        <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-easytag={EASY_TAG}>
-          <div className="spinner" data-easytag={EASY_TAG} /> Загружаем объявление...
+        <div data-easytag={EASY_TAG}>
+          <div className="ad-hero" style={{ marginBottom: 16 }} data-easytag={EASY_TAG}>
+            <div
+              className="skeleton"
+              style={{ height: 240, width: '100%', background: '#eee', borderRadius: 8 }}
+              data-easytag={EASY_TAG}
+            />
+            <div className="ad-info" style={{ marginTop: 10 }} data-easytag={EASY_TAG}>
+              <div className="skeleton" style={{ height: 18, width: '60%', background: '#eee', borderRadius: 4, marginBottom: 8 }} data-easytag={EASY_TAG} />
+              <div className="skeleton" style={{ height: 14, width: '30%', background: '#f0f0f0', borderRadius: 4 }} data-easytag={EASY_TAG} />
+            </div>
+          </div>
+          <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-easytag={EASY_TAG}>
+            <div className="spinner" data-easytag={EASY_TAG} /> Загружаем объявление...
+          </div>
         </div>
       )}
+
       {adError && (
-        <div className="error" data-easytag={EASY_TAG}>Не удалось загрузить объявление</div>
+        <div className="error" data-easytag={EASY_TAG}>
+          Не удалось загрузить объявление. {String(adErr?.response?.data?.error || adErr?.message || '')}
+        </div>
       )}
 
       {ad && (
         <div className="ad-hero" style={{ marginBottom: 16 }} data-easytag={EASY_TAG}>
           {ad.image ? (
-            <img className="ad-cover" src={ad.image} alt={ad.title} data-easytag={EASY_TAG} />
+            <img className="ad-cover" src={ad.image} alt={ad.title || 'Изображение объявления'} data-easytag={EASY_TAG} />
           ) : (
-            <div className="ad-cover" style={{ height: 240 }} data-easytag={EASY_TAG} />
+            <div className="ad-cover" style={{ height: 240, background: '#f2f2f2', borderRadius: 8 }} data-easytag={EASY_TAG} />
           )}
           <div className="ad-info" data-easytag={EASY_TAG}>
-            <h2 className="ad-title" data-easytag={EASY_TAG}>{ad.title}</h2>
+            <h2 className="ad-title" data-easytag={EASY_TAG}>{(ad.title || '').trim() || 'Без названия'}</h2>
             <div className="ad-views" data-easytag={EASY_TAG}>Просмотры: {typeof ad.views === 'number' ? ad.views : 0}</div>
             <div className="help" style={{ marginTop: 8 }} data-easytag={EASY_TAG}>Создано: {ad.createdAt ? formatDate(ad.createdAt) : '—'}</div>
             <a className="btn ghost" style={{ marginTop: 12, display: 'inline-block' }} href={ad.url} target="_blank" rel="noreferrer" data-easytag={EASY_TAG}>Открыть на Авито</a>
           </div>
+          {showDegradedHelp && (
+            <div className="muted" style={{ marginTop: 12, background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: '8px 10px' }} data-easytag={EASY_TAG}>
+              Не удалось автоматически подтянуть детали объявления. Это может быть временным ограничением со стороны Avito. Попробуйте позже.
+            </div>
+          )}
         </div>
       )}
 
@@ -108,7 +135,9 @@ export default function AdPage() {
           </div>
         )}
         {commentsError && (
-          <div className="error" data-easytag={EASY_TAG}>Не удалось загрузить комментарии</div>
+          <div className="error" data-easytag={EASY_TAG}>
+            Не удалось загрузить комментарии. {String(commentsErr?.response?.data?.error || commentsErr?.message || '')}
+          </div>
         )}
         {!commentsLoading && !commentsError && comments.length === 0 && (
           <div className="empty" data-easytag={EASY_TAG}>Пока нет комментариев. Будьте первым!</div>
