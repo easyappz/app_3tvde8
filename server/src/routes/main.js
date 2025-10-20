@@ -1,34 +1,31 @@
 const express = require('express');
-const mongoose = require('mongoose');
-
-/**
- * Пример создания модели в базу данных
- */
-// const MongoTestSchema = new mongoose.Schema({
-//   value: { type: String, required: true },
-// });
-
-// const MongoModelTest = mongoose.model('Test', MongoTestSchema);
-
-// const newTest = new MongoModelTest({
-//   value: 'test-value',
-// });
-
-// newTest.save();
 
 const router = express.Router();
 
 // GET /api/hello
-router.get('/hello', (req, res) => {
-  res.json({ message: 'Hello from API!' });
+router.get('/hello', async (req, res) => {
+  try {
+    res.json({ message: 'Hello from API!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/status
-router.get('/status', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    timestamp: new Date().toISOString()
-  });
+router.get('/status', async (req, res) => {
+  try {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
+
+// Future routes will be mounted here:
+// router.use('/auth', require('@src/routes/auth'));
+// router.use('/ads', require('@src/routes/ads'));
+// router.use('/comments', require('@src/routes/comments'));
 
 module.exports = router;

@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: Easyappz Ads Service API
+  version: 0.1.0
+  description: |
+    HTTP API for the ads service with comments and JWT-based authorization.
+    This file must be kept in sync with server endpoints.
+servers:
+  - url: /api
+    description: Base API path
+paths:
+  /hello:
+    get:
+      summary: Hello endpoint
+      description: Returns a simple welcome message.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+              examples:
+                success:
+                  value:
+                    message: Hello from API!
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+  /status:
+    get:
+      summary: Service status
+      description: Returns service status and current timestamp.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+              examples:
+                success:
+                  value:
+                    status: ok
+                    timestamp: 2024-01-01T00:00:00.000Z
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
