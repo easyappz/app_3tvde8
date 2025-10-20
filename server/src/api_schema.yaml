@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Easyappz API
-  version: 1.3.0
+  version: 1.4.0
   description: |
     Authentication, Ads and Comments endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
@@ -244,7 +244,13 @@ paths:
       summary: Resolve Avito URL and create or return existing Ad
       description: |
         Accepts an Avito listing URL. If an Ad with the same URL already exists, returns it.
-        Otherwise fetches the page, parses title and cover image, creates Ad with views=0 and returns it.
+        Otherwise the service fetches the page with retries and realistic headers, parses title and cover image, creates Ad with views=0 and returns it.
+
+        Resilience and caching:
+        - The service retries fetching with exponential backoff and random User-Agent/headers to mitigate 429/403/503.
+        - Results of parsing are cached in-memory by normalized URL for 24 hours to avoid repeated requests to Avito.
+        - Final Ad data may also be cached in-memory for 24 hours.
+        - Graceful degradation: if Avito remains unavailable or the page cannot be parsed after retries, the service still creates an Ad with a placeholder title and empty image and returns 200 OK. In this case, the response includes `degraded: true` and optional `warnings`.
       requestBody:
         required: true
         content:
@@ -258,7 +264,7 @@ paths:
                   example: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
       responses:
         '200':
-          description: Resolved successfully (existing or newly created)
+          description: Resolved successfully (existing, newly created, or degraded)
           content:
             application/json:
               schema:
@@ -272,6 +278,15 @@ paths:
                     description: Indicates whether a new Ad was created
                   ad:
                     $ref: '#/components/schemas/Ad'
+                  degraded:
+                    type: boolean
+                    description: Indicates that the Ad was created in degraded mode due to source refusal or parsing failure
+                    nullable: true
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Optional warnings when degraded mode was used
               examples:
                 created:
                   value:
@@ -295,6 +310,21 @@ paths:
                       image: https://example.cdn/iphone14.jpg
                       views: 42
                       createdAt: 2025-01-01T12:00:00.000Z
+                degraded:
+                  value:
+                    success: true
+                    created: true
+                    degraded: true
+                    warnings:
+                      - Avito rate-limited or blocked
+                      - Details: HTTP 429 from source
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111114
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_987654321
+                      title: "Объявление Avito"
+                      image: ""
+                      views: 0
+                      createdAt: 2025-01-01T12:10:00.000Z
         '400':
           description: Invalid input (e.g., invalid URL)
           content:
@@ -305,7 +335,7 @@ paths:
                     success: false
                     error: URL must point to an Avito listing page
         '422':
-          description: Parsing failed
+          description: Parsing failed (non-degradable case)
           content:
             application/json:
               examples:

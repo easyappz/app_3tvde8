@@ -2,12 +2,13 @@
 
 const mongoose = require("mongoose");
 const Ad = require("@src/models/Ad");
-const { parseAvito, normalizeUrl } = require("@src/utils/avitoParser");
+const { parseAvito, normalizeUrl, getCachedAdResult, setCachedAdResult } = require("@src/utils/avitoParser");
 
 /**
  * POST /api/ads/resolve
  * Body: { url: string }
  * If Ad with url exists -> return it. Otherwise parse and create with views=0.
+ * Implements resilient parsing with retries, caching and graceful degradation.
  */
 async function resolveOrCreate(req, res) {
   try {
@@ -23,38 +24,84 @@ async function resolveOrCreate(req, res) {
       return res.status(400).json({ success: false, error: e.message });
     }
 
-    // Try to find existing
+    // Try to find existing in DB first
     const existing = await Ad.findOne({ url: normalized });
     if (existing) {
+      // Put into in-memory ad cache for faster subsequent requests
+      try { setCachedAdResult(normalized, existing.toObject()); } catch (_) {}
       return res.status(200).json({ success: true, created: false, ad: existing });
     }
 
-    // Parse from Avito
-    let parsed;
+    // Try in-memory final ad cache (if any)
+    const cachedAd = getCachedAdResult(normalized);
+    if (cachedAd) {
+      return res.status(200).json({ success: true, created: false, ad: cachedAd });
+    }
+
+    // Parse from Avito with retries and cache
+    let parsedOrDegraded;
     try {
-      parsed = await parseAvito(normalized);
+      parsedOrDegraded = await parseAvito(normalized);
     } catch (e) {
+      // Non-degradation, non-retryable parsing setup errors
       return res.status(422).json({ success: false, error: e.message });
     }
 
-    try {
-      const ad = await Ad.create({
-        url: normalized,
-        title: parsed.title,
-        image: parsed.image || "",
-        views: 0,
-      });
-      return res.status(200).json({ success: true, created: true, ad });
-    } catch (e) {
-      // Handle possible race condition on unique url
-      if (e && e.code === 11000) {
-        const doc = await Ad.findOne({ url: normalized });
-        if (doc) {
-          return res.status(200).json({ success: true, created: false, ad: doc });
+    // If parsing was successful -> create a normal ad
+    if (parsedOrDegraded && parsedOrDegraded.ok) {
+      try {
+        const ad = await Ad.create({
+          url: normalized,
+          title: parsedOrDegraded.title,
+          image: parsedOrDegraded.image || "",
+          views: 0,
+        });
+        try { setCachedAdResult(normalized, ad.toObject()); } catch (_) {}
+        return res.status(200).json({ success: true, created: true, ad });
+      } catch (e) {
+        // Handle possible race condition on unique url
+        if (e && e.code === 11000) {
+          const doc = await Ad.findOne({ url: normalized });
+          if (doc) {
+            try { setCachedAdResult(normalized, doc.toObject()); } catch (_) {}
+            return res.status(200).json({ success: true, created: false, ad: doc });
+          }
         }
+        return res.status(500).json({ success: false, error: `Failed to create ad: ${e.message}` });
       }
-      return res.status(500).json({ success: false, error: `Failed to create ad: ${e.message}` });
     }
+
+    // Graceful degradation: create placeholder ad if fetch/parse failed due to rate limiting/blocks
+    if (parsedOrDegraded && parsedOrDegraded.degraded) {
+      try {
+        const ad = await Ad.create({
+          url: normalized,
+          title: "Объявление Avito",
+          image: "",
+          views: 0,
+        });
+        try { setCachedAdResult(normalized, ad.toObject()); } catch (_) {}
+        return res.status(200).json({
+          success: true,
+          created: true,
+          ad,
+          degraded: true,
+          warnings: parsedOrDegraded.warnings || ["Avito rate-limited or blocked"],
+        });
+      } catch (e) {
+        if (e && e.code === 11000) {
+          const doc = await Ad.findOne({ url: normalized });
+          if (doc) {
+            try { setCachedAdResult(normalized, doc.toObject()); } catch (_) {}
+            return res.status(200).json({ success: true, created: false, ad: doc, degraded: true, warnings: parsedOrDegraded.warnings || [] });
+          }
+        }
+        return res.status(500).json({ success: false, error: `Failed to create degraded ad: ${e.message}` });
+      }
+    }
+
+    // Fallback: unknown parsing result shape
+    return res.status(422).json({ success: false, error: "Parsing failed" });
   } catch (err) {
     return res.status(500).json({ success: false, error: `Resolve error: ${err.message}` });
   }
