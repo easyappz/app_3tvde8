@@ -29,11 +29,26 @@ exports.addComment = async (req, res) => {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
 
+    // Rate limit: max 5 comments per 5 minutes per user per ad
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 5 * 60 * 1000);
+    const recentCount = await Comment.countDocuments({
+      ad: adId,
+      user: userId,
+      createdAt: { $gte: windowStart },
+    });
+    if (recentCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        error: "Превышен лимит: не более 5 комментариев за 5 минут на одно объявление",
+      });
+    }
+
     const created = await Comment.create({
       ad: adId,
       user: userId,
       text,
-      createdAt: new Date(),
+      createdAt: now,
     });
 
     const populated = await Comment.findById(created._id)

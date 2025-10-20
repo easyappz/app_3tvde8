@@ -23,6 +23,14 @@ router.post('/auth/login', async (req, res) => {
   }
 });
 
+router.get('/auth/verify-email', async (req, res) => {
+  try {
+    await authController.verifyEmail(req, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Ads routes (public)
 router.post('/ads/resolve', (req, res) => adController.resolveOrCreate(req, res));
 router.get('/ads', (req, res) => adController.listTop(req, res));
