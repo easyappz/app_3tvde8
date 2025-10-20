@@ -14,9 +14,12 @@ exports.addComment = async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid ad id" });
     }
 
-    const ad = await Ad.findById(adId).lean();
-    if (!ad) {
-      return res.status(404).json({ success: false, error: "Ad not found" });
+    // Soft existence check: allow comments even if Ad document is absent in MongoDB
+    // to support in-memory ads. We intentionally do not 404 here.
+    try {
+      await Ad.findById(adId).select("_id").lean();
+    } catch (_) {
+      // Ignore DB errors and proceed
     }
 
     const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";

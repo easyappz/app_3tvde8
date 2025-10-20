@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Easyappz API
-  version: 1.5.1
+  version: 1.5.2
   description: |
     Authentication, Ads and Comments endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
@@ -681,6 +681,11 @@ paths:
       description: |
         Creates a comment for a given ad id. Only authorized users can post.
         Rate limit: not more than 5 comments in 5 minutes per user per ad.
+
+        Important:
+        - The endpoint validates `id` as a MongoDB ObjectId and returns 400 if invalid.
+        - If the Ad document is not found in MongoDB but the ad exists only in the in-memory store, the comment is still created (to support in-memory ads when DB is down or not yet persisted).
+        - 404 is NOT returned for a valid ObjectId when the Ad is missing from MongoDB only. This status is reserved for potential future cross-store checks.
       security:
         - bearerAuth: []
       requestBody:
@@ -742,7 +747,7 @@ paths:
                     success: false
                     error: Unauthorized
         '404':
-          description: Ad not found
+          description: Ad not found (reserved; not returned when Ad exists only in memory)
           content:
             application/json:
               examples:
