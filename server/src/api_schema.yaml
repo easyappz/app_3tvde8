@@ -1,75 +1,186 @@
 openapi: 3.0.3
 info:
-  title: Easyappz Ads Service API
-  version: 0.1.0
+  title: Easyappz Auth API
+  version: 1.0.0
   description: |
-    HTTP API for the ads service with comments and JWT-based authorization.
-    This file must be kept in sync with server endpoints.
+    Basic authentication endpoints for Easyappz service.
+    All tokens are standard JWT passed in Authorization header.
 servers:
   - url: /api
-    description: Base API path
 paths:
-  /hello:
-    get:
-      summary: Hello endpoint
-      description: Returns a simple welcome message.
+  /auth/register:
+    post:
+      summary: Register a new user
+      description: Creates a user, hashes password, returns JWT token and user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: strongpassword
       responses:
-        '200':
-          description: Successful response
+        '201':
+          description: User registered successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
                     type: string
+                    description: JWT token to be used in Authorization header
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: 65f2d1b2c8a4f21f1c111111
+                      email:
+                        type: string
+                        example: user@example.com
+                      createdAt:
+                        type: string
+                        format: date-time
               examples:
                 success:
                   value:
-                    message: Hello from API!
+                    success: true
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    user:
+                      id: 65f2d1b2c8a4f21f1c111111
+                      email: user@example.com
+                      createdAt: 2025-01-01T12:00:00.000Z
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    success: false
+                    error: Email and password are required
+                invalidEmail:
+                  value:
+                    success: false
+                    error: Invalid email format
+                weakPassword:
+                  value:
+                    success: false
+                    error: Password must be at least 6 characters
+        '409':
+          description: Duplicate email
+          content:
+            application/json:
+              examples:
+                duplicate:
+                  value:
+                    success: false
+                    error: Email already registered
         '500':
           description: Server error
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-  /status:
-    get:
-      summary: Service status
-      description: Returns service status and current timestamp.
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: Registration failed
+  /auth/login:
+    post:
+      summary: Login user
+      description: Validates credentials and returns JWT token with user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  example: strongpassword
       responses:
         '200':
-          description: Successful response
+          description: Login successful
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status:
+                  success:
+                    type: boolean
+                    example: true
+                  token:
                     type: string
-                  timestamp:
-                    type: string
-                    format: date-time
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
               examples:
                 success:
                   value:
-                    status: ok
-                    timestamp: 2024-01-01T00:00:00.000Z
+                    success: true
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    user:
+                      id: 65f2d1b2c8a4f21f1c111111
+                      email: user@example.com
+                      createdAt: 2025-01-01T12:00:00.000Z
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              examples:
+                missing:
+                  value:
+                    success: false
+                    error: Email and password are required
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              examples:
+                invalid:
+                  value:
+                    success: false
+                    error: Invalid email or password
         '500':
           description: Server error
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: Login failed
 components:
   securitySchemes:
-    BearerAuth:
+    bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+security:
+  - bearerAuth: []
