@@ -5,6 +5,8 @@ import { getAd } from '../api/ads';
 import { addComment, listComments } from '../api/comments';
 import { useAuth } from '../context/AuthContext';
 
+const EASY_TAG = '1760914455134-react/src/pages/AdPage.jsx';
+
 function formatDate(dt) {
   try {
     return new Date(dt).toLocaleString('ru-RU');
@@ -51,81 +53,87 @@ export default function AdPage() {
         await refetchComments();
         await qc.invalidateQueries({ queryKey: ['ad', id] });
       } else {
-        setSendError('Не удалось отправить комментарий');
+        setSendError(res?.error || 'Не удалось отправить комментарий');
       }
     } catch (err) {
-      const msg = err?.response?.data?.error || 'Ошибка отправки комментария';
-      setSendError(msg);
+      const status = err?.response?.status;
+      const serverMsg = err?.response?.data?.error;
+      if (status === 429 && serverMsg) {
+        setSendError(serverMsg);
+      } else {
+        const msg = serverMsg || 'Ошибка отправки комментария';
+        setSendError(msg);
+      }
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <Link className="back-link" to="/">⟵ На главную</Link>
+    <div data-easytag={EASY_TAG}>
+      <div style={{ marginBottom: 12 }} data-easytag={EASY_TAG}>
+        <Link className="back-link" to="/" data-easytag={EASY_TAG}>⟵ На главную</Link>
       </div>
 
       {adLoading && (
-        <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="spinner" /> Загружаем объявление...
+        <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-easytag={EASY_TAG}>
+          <div className="spinner" data-easytag={EASY_TAG} /> Загружаем объявление...
         </div>
       )}
       {adError && (
-        <div className="error">Не удалось загрузить объявление</div>
+        <div className="error" data-easytag={EASY_TAG}>Не удалось загрузить объявление</div>
       )}
 
       {ad && (
-        <div className="ad-hero" style={{ marginBottom: 16 }}>
+        <div className="ad-hero" style={{ marginBottom: 16 }} data-easytag={EASY_TAG}>
           {ad.image ? (
-            <img className="ad-cover" src={ad.image} alt={ad.title} />
+            <img className="ad-cover" src={ad.image} alt={ad.title} data-easytag={EASY_TAG} />
           ) : (
-            <div className="ad-cover" style={{ height: 240 }} />
+            <div className="ad-cover" style={{ height: 240 }} data-easytag={EASY_TAG} />
           )}
-          <div className="ad-info">
-            <h2 className="ad-title">{ad.title}</h2>
-            <div className="ad-views">Просмотры: {typeof ad.views === 'number' ? ad.views : 0}</div>
-            <div className="help" style={{ marginTop: 8 }}>Создано: {ad.createdAt ? formatDate(ad.createdAt) : '—'}</div>
-            <a className="btn ghost" style={{ marginTop: 12, display: 'inline-block' }} href={ad.url} target="_blank" rel="noreferrer">Открыть на Авито</a>
+          <div className="ad-info" data-easytag={EASY_TAG}>
+            <h2 className="ad-title" data-easytag={EASY_TAG}>{ad.title}</h2>
+            <div className="ad-views" data-easytag={EASY_TAG}>Просмотры: {typeof ad.views === 'number' ? ad.views : 0}</div>
+            <div className="help" style={{ marginTop: 8 }} data-easytag={EASY_TAG}>Создано: {ad.createdAt ? formatDate(ad.createdAt) : '—'}</div>
+            <a className="btn ghost" style={{ marginTop: 12, display: 'inline-block' }} href={ad.url} target="_blank" rel="noreferrer" data-easytag={EASY_TAG}>Открыть на Авито</a>
           </div>
         </div>
       )}
 
-      <section className="comments">
-        <h3 style={{ margin: 0, marginBottom: 8 }}>Комментарии</h3>
+      <section className="comments" data-easytag={EASY_TAG}>
+        <h3 style={{ margin: 0, marginBottom: 8 }} data-easytag={EASY_TAG}>Комментарии</h3>
         {commentsLoading && (
-          <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="spinner" /> Загружаем комментарии...
+          <div className="loading" style={{ display: 'flex', alignItems: 'center', gap: 10 }} data-easytag={EASY_TAG}>
+            <div className="spinner" data-easytag={EASY_TAG} /> Загружаем комментарии...
           </div>
         )}
         {commentsError && (
-          <div className="error">Не удалось загрузить комментарии</div>
+          <div className="error" data-easytag={EASY_TAG}>Не удалось загрузить комментарии</div>
         )}
         {!commentsLoading && !commentsError && comments.length === 0 && (
-          <div className="empty">Пока нет комментариев. Будьте первым!</div>
+          <div className="empty" data-easytag={EASY_TAG}>Пока нет комментариев. Будьте первым!</div>
         )}
         {comments.map((c) => (
-          <div key={c._id} className="comment">
-            <div className="comment-head">
-              <span>{c?.user?.email || 'Аноним'}</span>
-              <span>{c?.createdAt ? formatDate(c.createdAt) : ''}</span>
+          <div key={c._id} className="comment" data-easytag={EASY_TAG}>
+            <div className="comment-head" data-easytag={EASY_TAG}>
+              <span data-easytag={EASY_TAG}>{c?.user?.email || 'Аноним'}</span>
+              <span data-easytag={EASY_TAG}>{c?.createdAt ? formatDate(c.createdAt) : ''}</span>
             </div>
-            <div className="comment-text">{c.text}</div>
+            <div className="comment-text" data-easytag={EASY_TAG}>{c.text}</div>
           </div>
         ))}
 
         {isAuthenticated ? (
-          <form onSubmit={onSend} style={{ marginTop: 12 }}>
-            <label className="label" htmlFor="comment">Добавить комментарий</label>
-            <textarea id="comment" className="input" rows={3} placeholder="Ваш комментарий..." value={text} onChange={(e) => setText(e.target.value)} />
-            {sendError ? <div className="error">{sendError}</div> : <div className="help">Будьте вежливы. Комментарий увидят другие пользователи.</div>}
-            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-              <button className="btn primary" type="submit" disabled={sending}>{sending ? 'Отправка...' : 'Отправить'}</button>
+          <form onSubmit={onSend} style={{ marginTop: 12 }} data-easytag={EASY_TAG}>
+            <label className="label" htmlFor="comment" data-easytag={EASY_TAG}>Добавить комментарий</label>
+            <textarea id="comment" className="input" rows={3} placeholder="Ваш комментарий..." value={text} onChange={(e) => setText(e.target.value)} data-easytag={EASY_TAG} />
+            {sendError ? <div className="error" data-easytag={EASY_TAG}>{sendError}</div> : <div className="help" data-easytag={EASY_TAG}>Будьте вежливы. Комментарий увидят другие пользователи.</div>}
+            <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }} data-easytag={EASY_TAG}>
+              <button className="btn primary" type="submit" disabled={sending} data-easytag={EASY_TAG}>{sending ? 'Отправка...' : 'Отправить'}</button>
             </div>
           </form>
         ) : (
-          <div className="help" style={{ marginTop: 8 }}>Чтобы оставить комментарий, войдите в аккаунт.</div>
+          <div className="help" style={{ marginTop: 8 }} data-easytag={EASY_TAG}>Чтобы оставить комментарий, войдите в аккаунт.</div>
         )}
       </section>
     </div>

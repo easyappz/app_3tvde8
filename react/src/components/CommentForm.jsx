@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { add as addComment } from '../api/comments';
+import { addComment } from '../api/comments';
+
+const EASY_TAG = '1760914455134-react/src/components/CommentForm.jsx';
 
 const CommentForm = ({ adId, onSuccess }) => {
   const [text, setText] = useState('');
@@ -12,13 +14,13 @@ const CommentForm = ({ adId, onSuccess }) => {
   }, []);
 
   const mutation = useMutation({
-    mutationFn: (payload) => addComment(adId, payload),
+    mutationFn: (textValue) => addComment(adId, textValue),
     onSuccess: (data) => {
       if (data && data.success) {
         setText('');
         if (onSuccess) onSuccess();
       } else {
-        setError('Не удалось добавить комментарий');
+        setError(data?.error || 'Не удалось добавить комментарий');
       }
     },
     onError: (err) => {
@@ -28,7 +30,7 @@ const CommentForm = ({ adId, onSuccess }) => {
   });
 
   if (!isAuthed) {
-    return <div className="help">Чтобы оставить комментарий, войдите в аккаунт.</div>;
+    return <div className="help" data-easytag={EASY_TAG}>Чтобы оставить комментарий, войдите в аккаунт.</div>;
   }
 
   const onSubmit = (e) => {
@@ -39,12 +41,12 @@ const CommentForm = ({ adId, onSuccess }) => {
       setError('Введите текст комментария');
       return;
     }
-    mutation.mutate({ text: value });
+    mutation.mutate(value);
   };
 
   return (
-    <form onSubmit={onSubmit}>
-      <label className="label" htmlFor="comment">Новый комментарий</label>
+    <form onSubmit={onSubmit} data-easytag={EASY_TAG}>
+      <label className="label" htmlFor="comment" data-easytag={EASY_TAG}>Новый комментарий</label>
       <textarea
         id="comment"
         className="input"
@@ -52,10 +54,11 @@ const CommentForm = ({ adId, onSuccess }) => {
         placeholder="Поделитесь своим мнением…"
         value={text}
         onChange={(e) => setText(e.target.value)}
+        data-easytag={EASY_TAG}
       />
-      {error && <div className="error">{error}</div>}
-      <div style={{ height: 8 }} />
-      <button type="submit" className="btn primary" disabled={mutation.isPending}>
+      {error && <div className="error" data-easytag={EASY_TAG}>{error}</div>}
+      <div style={{ height: 8 }} data-easytag={EASY_TAG} />
+      <button type="submit" className="btn primary" disabled={mutation.isPending} data-easytag={EASY_TAG}>
         {mutation.isPending ? 'Отправка…' : 'Добавить комментарий'}
       </button>
     </form>

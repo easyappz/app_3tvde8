@@ -29,4 +29,13 @@ root.render(
   </React.StrictMode>
 );
 
+// Debug helper: notify routes to the host environment
+try {
+  if (typeof window !== 'undefined' && typeof window.handleRoutes === 'function') {
+    window.handleRoutes(['/', '/ad/:id', '/verify-email']);
+  }
+} catch (e) {
+  // noop
+}
+
 reportWebVitals();
