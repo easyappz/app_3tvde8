@@ -41,6 +41,7 @@ function backoffMs(base, attempt) {
 
 /**
  * Validate and normalize a URL. Ensures it's a valid Avito URL.
+ * Normalization: protocol + '//' + hostname(lowercased) + pathname (no query/hash).
  * @param {string} urlString
  * @returns {string} normalized URL string
  */
@@ -60,7 +61,9 @@ function normalizeUrl(urlString) {
   if (!host.includes("avito")) {
     throw new Error("URL must point to an Avito listing page");
   }
-  return parsed.toString();
+  // Build canonical without search/hash
+  const pathname = parsed.pathname || "/";
+  return `${parsed.protocol}//${host}${pathname}`;
 }
 
 /**
@@ -84,10 +87,10 @@ function resolveImageUrl(base, src) {
  * Fetch HTML with retries, exponential backoff, and realistic headers.
  * Retries on statuses 429/503/403 and on timeouts/network errors.
  * @param {string} url
- * @param {{ retries?: number, baseDelayMs?: number }} options
+ * @param {{ retries?: number, baseDelayMs?: number, timeoutMs?: number }} options
  * @returns {Promise<string>} HTML string
  */
-async function fetchHtmlWithRetries(url, { retries = 3, baseDelayMs = 500 } = {}) {
+async function fetchHtmlWithRetries(url, { retries = 4, baseDelayMs = 500, timeoutMs = 15000 } = {}) {
   let lastErr = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -103,7 +106,7 @@ async function fetchHtmlWithRetries(url, { retries = 3, baseDelayMs = 500 } = {}
       };
 
       const response = await axios.get(url, {
-        timeout: 12000,
+        timeout: timeoutMs,
         maxRedirects: 5,
         responseType: "text",
         headers,
@@ -149,6 +152,169 @@ async function fetchHtmlWithRetries(url, { retries = 3, baseDelayMs = 500 } = {}
   throw e;
 }
 
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
+function isString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function pickFirstStringByKeys(obj, keys) {
+  let result = null;
+  const K = new Set(keys.map((k) => k.toLowerCase()));
+  function walk(node) {
+    if (result) return;
+    if (Array.isArray(node)) {
+      for (const it of node) walk(it);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (result) break;
+        if (K.has(k.toLowerCase()) && isString(v)) {
+          result = String(v).trim();
+          break;
+        }
+        walk(v);
+      }
+    }
+  }
+  walk(obj);
+  return result;
+}
+
+function pickImageFromUnknown(val, baseUrl) {
+  // val can be string | object | array
+  function pickFromObject(o) {
+    if (!o || typeof o !== "object") return null;
+    // common keys
+    const directKeys = ["url", "contentUrl", "image", "src"];
+    for (const k of directKeys) {
+      if (typeof o[k] === "string") {
+        const resolved = resolveImageUrl(baseUrl, o[k]);
+        if (resolved) return resolved;
+      }
+    }
+    // nested search
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === "string" && /image|photo|picture|img/i.test(k)) {
+        const resolved = resolveImageUrl(baseUrl, v);
+        if (resolved) return resolved;
+      }
+      if (v && typeof v === "object") {
+        const nested = pickImageFromUnknown(v, baseUrl);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  }
+
+  if (!val) return null;
+  if (typeof val === "string") return resolveImageUrl(baseUrl, val);
+  if (Array.isArray(val)) {
+    for (const it of val) {
+      const found = pickImageFromUnknown(it, baseUrl);
+      if (found) return found;
+    }
+    return null;
+  }
+  return pickFromObject(val);
+}
+
+function extractFromJsonLd(rawText, baseUrl) {
+  const out = { title: null, image: null };
+  const data = safeJsonParse(rawText);
+  if (!data) return out;
+  const items = [];
+  if (Array.isArray(data)) items.push(...data);
+  else if (data && typeof data === "object") {
+    if (Array.isArray(data["@graph"])) items.push(...data["@graph"]);
+    items.push(data);
+  }
+  for (const it of items) {
+    if (!it || typeof it !== "object") continue;
+    if (!out.title) {
+      const t = pickFirstStringByKeys(it, ["name", "headline", "title"]);
+      if (t) out.title = t;
+    }
+    if (!out.image) {
+      const img = pickImageFromUnknown(it.image || it.imageUrl || it.imageURL || it.img, baseUrl);
+      if (img) out.image = img;
+    }
+    if (out.title && out.image) break;
+  }
+  return out;
+}
+
+function extractInitialDataJson(html) {
+  const patterns = [
+    /window\.__initialData__\s*=\s*(\{[\s\S]*?\})\s*[;<]/,
+    /window\.__initialData\s*=\s*(\{[\s\S]*?\})\s*[;<]/,
+    /window\.__data\s*=\s*(\{[\s\S]*?\})\s*[;<]/,
+    /avito\.[A-Za-z_$][\w$]*\s*=\s*(\{[\s\S]*?\})\s*[;<]/,
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m && m[1]) {
+      const parsed = safeJsonParse(m[1]);
+      if (parsed) return parsed;
+    }
+  }
+  return null;
+}
+
+function pickTitleFromObject(obj) {
+  return pickFirstStringByKeys(obj, ["name", "headline", "title"]);
+}
+
+function pickImageFromObject(obj, baseUrl) {
+  if (!obj || typeof obj !== "object") return null;
+  // prefer explicit keys
+  const order = ["image", "imageUrl", "imageURL", "img", "photo", "picture"]; 
+  for (const k of order) {
+    if (k in obj) {
+      const cand = pickImageFromUnknown(obj[k], baseUrl);
+      if (cand) return cand;
+    }
+  }
+  // generic url nested under image-like keys
+  let result = null;
+  (function walk(node, parentKey) {
+    if (result) return;
+    if (Array.isArray(node)) {
+      for (const it of node) walk(it, parentKey);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (result) break;
+        const key = String(k);
+        if (typeof v === "string" && /image|photo|picture|img/i.test(key)) {
+          const resolved = resolveImageUrl(baseUrl, v);
+          if (resolved) {
+            result = resolved;
+            break;
+          }
+        }
+        if (key.toLowerCase() === "url" && parentKey && /image|photo|picture|img/i.test(parentKey)) {
+          const resolved = resolveImageUrl(baseUrl, v);
+          if (resolved) {
+            result = resolved;
+            break;
+          }
+        }
+        walk(v, key);
+      }
+    }
+  })(obj, "");
+  return result;
+}
+
 /**
  * Parse Avito page to extract title and image URL.
  * Uses in-memory cache and graceful degradation.
@@ -166,7 +332,7 @@ async function parseAvito(inputUrl) {
 
   let html;
   try {
-    html = await fetchHtmlWithRetries(url, { retries: 3, baseDelayMs: 500 });
+    html = await fetchHtmlWithRetries(url, { retries: 4, baseDelayMs: 500, timeoutMs: 15000 });
   } catch (err) {
     // Graceful degradation on fetch problems (rate limits, timeouts, etc.)
     return {
@@ -184,45 +350,75 @@ async function parseAvito(inputUrl) {
   try {
     const $ = cheerio.load(html);
 
-    let title =
-      $("meta[property='og:title']").attr("content") ||
-      $("meta[name='og:title']").attr("content") ||
-      $("title").first().text();
+    // Candidates
+    let titleFromMeta = $("meta[property='og:title']").attr("content") || $("meta[name='og:title']").attr("content") || null;
+    let titleFromTitle = $("title").first().text() || null;
+    titleFromMeta = titleFromMeta ? String(titleFromMeta).trim() : null;
+    titleFromTitle = titleFromTitle ? String(titleFromTitle).trim() : null;
 
-    if (title) title = title.trim();
-    if (!title) {
-      return {
-        ok: false,
-        degraded: true,
-        url,
-        reason: "parse-failed",
-        warnings: ["Unable to parse title from the page"],
-      };
+    let imageFromMeta = $("meta[property='og:image']").attr("content") || $("meta[name='og:image']").attr("content") || null;
+    imageFromMeta = imageFromMeta ? resolveImageUrl(url, imageFromMeta) : null;
+
+    // JSON-LD blocks
+    let jsonLdTitle = null;
+    let jsonLdImage = null;
+    $("script[type='application/ld+json']").each((_, el) => {
+      if (jsonLdTitle && jsonLdImage) return; // short-circuit if both found
+      const raw = $(el).contents().text();
+      if (!raw || typeof raw !== "string") return;
+      const { title, image } = extractFromJsonLd(raw, url);
+      if (!jsonLdTitle && isString(title)) jsonLdTitle = title.trim();
+      if (!jsonLdImage && isString(image)) jsonLdImage = resolveImageUrl(url, image);
+    });
+
+    // window.__initialData / similar
+    let initTitle = null;
+    let initImage = null;
+    const initialJson = extractInitialDataJson(html);
+    if (initialJson) {
+      const t = pickTitleFromObject(initialJson);
+      if (isString(t)) initTitle = t.trim();
+      const img = pickImageFromObject(initialJson, url);
+      if (isString(img)) initImage = resolveImageUrl(url, img);
     }
 
-    let image =
-      $("meta[property='og:image']").attr("content") ||
-      $("meta[name='og:image']").attr("content") ||
-      null;
+    // <link rel="image_src">
+    let linkImage = $("link[rel='image_src']").attr("href");
+    linkImage = linkImage ? resolveImageUrl(url, linkImage) : null;
 
-    if (!image) {
-      let found = null;
-      $("img").each((_, img) => {
-        if (found) return;
-        const cand = $(img).attr("src") || $(img).attr("data-src") || $(img).attr("data-original");
-        const resolved = resolveImageUrl(url, cand);
-        if (resolved) found = resolved;
-      });
-      image = found;
-    } else {
-      image = resolveImageUrl(url, image);
+    // <img> fallbacks
+    let firstImg = null;
+    $("img").each((_, img) => {
+      if (firstImg) return;
+      const cand = $(img).attr("src") || $(img).attr("data-src") || $(img).attr("data-original");
+      const resolved = resolveImageUrl(url, cand);
+      if (resolved) firstImg = resolved;
+    });
+
+    // Choose best title and image
+    const title = (jsonLdTitle || initTitle || titleFromMeta || titleFromTitle || "").trim();
+    const image = jsonLdImage || initImage || imageFromMeta || linkImage || firstImg || null;
+
+    if (title) {
+      const result = { title, image: image || null, url };
+      // Save to cache
+      parseCache.set(url, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+      return { ok: true, ...result };
     }
 
-    const result = { title, image: image || null, url };
-    // Save to cache
-    parseCache.set(url, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+    // Degraded path: no title
+    const warnings = [];
+    if (!titleFromMeta && !titleFromTitle) warnings.push("Failed to extract <title>/og:title");
+    if (!jsonLdTitle) warnings.push("JSON-LD title not found or unparsable");
+    if (!initialJson) warnings.push("window.__initialData not found or unparsable");
 
-    return { ok: true, ...result };
+    return {
+      ok: false,
+      degraded: true,
+      url,
+      reason: "parse-failed",
+      warnings: warnings.length ? warnings : ["Unable to parse title from the page"],
+    };
   } catch (e) {
     return {
       ok: false,

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Easyappz API
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Authentication, Ads and Comments endpoints for Easyappz service.
     All tokens are standard JWT passed in Authorization header.
@@ -485,6 +485,99 @@ paths:
                   value:
                     success: false
                     error: GetById error: database unavailable
+  /ads/{id}/refresh:
+    post:
+      summary: Refresh ad data from source (Avito)
+      description: |
+        Forces a refresh of an existing Ad by fetching its original URL and attempting robust parsing.
+        - On success (`ok: true`), updates title and image (image only if found) without worsening existing data.
+        - On degraded parsing (temporary blocks, anti-bot, dynamic rendering), returns 200 with `degraded: true` and does not change stored data.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the Ad
+      responses:
+        '200':
+          description: Refresh completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  refreshed:
+                    type: boolean
+                    description: True if data was updated
+                  degraded:
+                    type: boolean
+                    nullable: true
+                    description: Present when parsing degraded
+                  warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: Present when degraded
+                  ad:
+                    $ref: '#/components/schemas/Ad'
+              examples:
+                refreshed:
+                  value:
+                    success: true
+                    refreshed: true
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111113
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                      title: iPhone 14 256GB (updated)
+                      image: https://example.cdn/iphone14-updated.jpg
+                      views: 43
+                      createdAt: 2025-01-01T12:00:00.000Z
+                degraded:
+                  value:
+                    success: true
+                    refreshed: false
+                    degraded: true
+                    warnings:
+                      - Avito rate-limited or blocked or unreachable
+                      - Details: HTTP 429 from source
+                    ad:
+                      _id: 65f2d1b2c8a4f21f1c111113
+                      url: https://www.avito.ru/moskva/telefony/iphone_14_128gb_123456789
+                      title: iPhone 14 128GB
+                      image: https://example.cdn/iphone14.jpg
+                      views: 43
+                      createdAt: 2025-01-01T12:00:00.000Z
+        '400':
+          description: Invalid id
+          content:
+            application/json:
+              examples:
+                invalid:
+                  value:
+                    success: false
+                    error: Invalid ad id
+        '404':
+          description: Ad not found
+          content:
+            application/json:
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    error: Ad not found
+        '500':
+          description: Server error
+          content:
+            application/json:
+              examples:
+                server:
+                  value:
+                    success: false
+                    error: Refresh error: database unavailable
   /ads/{id}/comments:
     get:
       summary: List comments for an ad

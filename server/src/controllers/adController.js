@@ -158,8 +158,59 @@ async function getById(req, res) {
   }
 }
 
+/**
+ * POST /api/ads/:id/refresh
+ * Refresh ad title/image from source URL using robust parser. Does not worsen stored data.
+ */
+async function refreshById(req, res) {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, error: "Invalid ad id" });
+    }
+
+    const ad = await Ad.findById(id);
+    if (!ad) {
+      return res.status(404).json({ success: false, error: "Ad not found" });
+    }
+
+    let parsed;
+    try {
+      parsed = await parseAvito(ad.url);
+    } catch (e) {
+      return res.status(500).json({ success: false, error: `Refresh parse error: ${e.message}` });
+    }
+
+    if (parsed && parsed.ok) {
+      const updates = {};
+      if (parsed.title && parsed.title !== ad.title) updates.title = parsed.title;
+      if (parsed.image && parsed.image !== ad.image) updates.image = parsed.image; // only update if parser found image
+
+      let updated = ad;
+      if (Object.keys(updates).length > 0) {
+        try {
+          updated = await Ad.findByIdAndUpdate(id, { $set: updates }, { new: true });
+        } catch (e) {
+          return res.status(500).json({ success: false, error: `Failed to update ad: ${e.message}` });
+        }
+      }
+      return res.status(200).json({ success: true, refreshed: true, ad: updated });
+    }
+
+    if (parsed && parsed.degraded) {
+      // Do not change current data in degraded mode
+      return res.status(200).json({ success: true, refreshed: false, degraded: true, warnings: parsed.warnings || [], ad });
+    }
+
+    return res.status(500).json({ success: false, error: "Unknown refresh result" });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: `Refresh error: ${err.message}` });
+  }
+}
+
 module.exports = {
   resolveOrCreate,
   listTop,
   getById,
+  refreshById,
 };

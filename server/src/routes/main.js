@@ -35,6 +35,7 @@ router.get('/auth/verify-email', async (req, res) => {
 router.post('/ads/resolve', (req, res) => adController.resolveOrCreate(req, res));
 router.get('/ads', (req, res) => adController.listTop(req, res));
 router.get('/ads/:id', (req, res) => adController.getById(req, res));
+router.post('/ads/:id/refresh', (req, res) => adController.refreshById(req, res));
 
 // Comments routes
 router.get('/ads/:id/comments', (req, res) => commentController.listComments(req, res));
