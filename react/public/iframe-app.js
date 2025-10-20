@@ -78,3 +78,100 @@ window.addEventListener('unhandledrejection', function (event) {
 
   event.preventDefault(); // Предотвращаем стандартный вывод
 });
+
+window.handleRoutes = function(pages) {
+  console.log('window.handleRoutes', {pages});
+  const pagesData = {
+    type: 'handlePages',
+    timestamp: new Date().toISOString(),
+    pages: pages,
+  };
+  window.parent.postMessage(pagesData, '*');
+};
+
+// Добавляем этот код в iframe
+document.addEventListener('DOMContentLoaded', function() {
+  // Обработчик сообщений
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'enableEasyEditMode') {
+      document.body.classList.add('easy-mode-edit');
+      console.log('✅ Easy edit mode enabled');
+    }
+    
+    if (event.data && event.data.type === 'disableEasyEditMode') {
+      document.body.classList.remove('easy-mode-edit');
+      console.log('❌ Easy edit mode disabled');
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Функция для инициализации обработчиков событий
+  function initEasyTagHandlers() {
+    const elements = document.querySelectorAll('[data-easytag]');
+    
+    elements.forEach(element => {
+      // Удаляем существующие обработчики, чтобы избежать дублирования
+      element.removeEventListener('click', handleEasyTagClick);
+      // Добавляем новый обработчик
+      element.addEventListener('click', handleEasyTagClick);
+    });
+  }
+
+  // Обработчик клика по элементам с data-easytag
+  function handleEasyTagClick(event) {
+    const editModeElement = document.getElementsByClassName('easy-mode-edit');
+
+    if (editModeElement.length === 0) {
+      // Если режим редактирования не активен, ничего не делаем
+      return;
+    }
+
+    event.stopPropagation();
+    const easyTagData = this.getAttribute('data-easytag');
+    console.log({easyTagData});
+    
+    // Отправляем данные наверх
+    window.parent.postMessage({
+      type: 'easyTagClick',
+      timestamp: new Date().toISOString(),
+      data: easyTagData
+    }, '*');
+
+    event.preventDefault();
+  }
+
+  // Инициализация при загрузке DOM
+  initEasyTagHandlers();
+
+  // Наблюдатель за изменениями DOM для обработки динамического контента
+  const observer = new MutationObserver(function(mutations) {
+    let shouldInit = false;
+    
+    mutations.forEach(function(mutation) {
+      // Проверяем добавленные узлы
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) { // ELEMENT_NODE
+          // Проверяем сам элемент или его потомков на наличие data-easytag
+          if (node.hasAttribute('data-easytag') || 
+              node.querySelector('[data-easytag]')) {
+            shouldInit = true;
+          }
+        }
+      });
+    });
+    
+    if (shouldInit) {
+      // Небольшая задержка для гарантии, что DOM полностью обновлен
+      setTimeout(initEasyTagHandlers, 10);
+    }
+  });
+
+  // Начинаем наблюдение
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  return true;
+});
